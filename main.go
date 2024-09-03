@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"net/http"
 	"time"
 
 	"github.com/anthdm/foreverstore/p2p"
@@ -29,6 +30,14 @@ func makeServer(listenAddr string, nodes ...string) *FileServer {
 	s := NewFileServer(fileServerOpts)
 
 	tcpTransport.OnPeer = s.OnPeer
+
+	//new
+	go func() {
+		http.HandleFunc("/upload", s.uploadHandler)
+		http.HandleFunc("/download", s.downloadHandler)
+		log.Fatal(http.ListenAndServe(listenAddr, nil))
+	}()
+
 
 	return s
 }

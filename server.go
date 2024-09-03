@@ -9,7 +9,9 @@ import (
 	"log"
 	"sync"
 	"time"
-
+	"net/http"
+	"os"
+	"path/filepath"
 	"github.com/anthdm/foreverstore/p2p"
 )
 
@@ -301,4 +303,48 @@ func (s *FileServer) Start() error {
 func init() {
 	gob.Register(MessageStoreFile{})
 	gob.Register(MessageGetFile{})
+}
+
+func (s *FileServer) uploadHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Only POST method is supported", http.StatusMethodNotAllowed)
+		return
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, "Failed to get file from request", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	key := header.Filename
+	if err := s.Store(key, file); err != nil {
+		http.Error(w, "Failed to store file", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, "File %s uploaded successfully", key)
+}
+
+func (s *FileServer) downloadHandler(w http.ResponseWriter, r *http.Request) {
+	key := r.URL.Query().Get("key")
+	if key == "" {
+		http.Error(w, "Missing key in request", http.StatusBadRequest)
+		return
+	}
+
+	reader, err := s.Get(key)
+	if err != nil {
+		http.Error(w, "File not found", http.StatusNotFound)
+		return
+	}
+	defer reader.Close()
+
+	w.Header().Set("Content-Disposition", "attachment; filename="+filepath.Base(key))
+	w.Header().Set("Content-Type", "application/octet-stream")
+	if _, err := io.Copy(w, reader); err != nil {
+		http.Error(w, "Failed to send file", http.StatusInternalServerError)
+	}
 }
